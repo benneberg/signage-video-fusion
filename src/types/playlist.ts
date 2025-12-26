@@ -15,7 +15,7 @@ export interface ImagePlaylistItem extends BasePlaylistItem {
   file?: File;
   url: string;
   duration: number; // seconds
-  renderable: true;
+  renderable: boolean; // user can toggle
 }
 
 export interface VideoPlaylistItem extends BasePlaylistItem {
@@ -23,21 +23,21 @@ export interface VideoPlaylistItem extends BasePlaylistItem {
   file?: File;
   url: string;
   duration: number; // detected duration
-  renderable: true;
+  renderable: boolean; // user can toggle
 }
 
 export interface WebpagePlaylistItem extends BasePlaylistItem {
   type: 'webpage';
   url: string;
   duration: number; // display time
-  renderable: false;
+  renderable: false; // always non-renderable
 }
 
 export interface InteractivePlaylistItem extends BasePlaylistItem {
   type: 'interactive';
   url: string;
   duration: number; // estimated duration
-  renderable: false;
+  renderable: false; // always non-renderable
 }
 
 export type PlaylistItem = 

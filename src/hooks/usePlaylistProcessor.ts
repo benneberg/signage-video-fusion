@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { 
   PlaylistItem, 
   PlaylistSettings, 
@@ -10,12 +12,13 @@ import {
 } from '@/types/playlist';
 
 interface ProcessingProgress {
-  stage: 'analyzing' | 'rendering' | 'done' | 'idle';
+  stage: 'idle' | 'loading' | 'analyzing' | 'rendering' | 'done' | 'error';
   currentSegment: number;
   totalSegments: number;
-  currentFrame: number;
-  totalFrames: number;
+  currentItem: number;
+  totalItems: number;
   message: string;
+  percent: number;
 }
 
 export function usePlaylistProcessor() {
@@ -24,12 +27,51 @@ export function usePlaylistProcessor() {
     stage: 'idle',
     currentSegment: 0,
     totalSegments: 0,
-    currentFrame: 0,
-    totalFrames: 0,
-    message: ''
+    currentItem: 0,
+    totalItems: 0,
+    message: '',
+    percent: 0
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ffmpegRef = useRef<FFmpeg | null>(null);
   const abortRef = useRef(false);
+  const isLoadedRef = useRef(false);
+
+  // Load FFmpeg
+  const loadFFmpeg = useCallback(async () => {
+    if (isLoadedRef.current && ffmpegRef.current) return true;
+    
+    setProgress(p => ({ ...p, stage: 'loading', message: 'Loading video processor...' }));
+    
+    try {
+      const ffmpeg = new FFmpeg();
+      ffmpegRef.current = ffmpeg;
+      
+      ffmpeg.on('log', ({ message }) => {
+        console.log('[FFmpeg Playlist]', message);
+      });
+      
+      ffmpeg.on('progress', ({ progress: p }) => {
+        setProgress(prev => ({
+          ...prev,
+          percent: Math.round(p * 100)
+        }));
+      });
+
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      
+      isLoadedRef.current = true;
+      return true;
+    } catch (error) {
+      console.error('Failed to load FFmpeg:', error);
+      setProgress(p => ({ ...p, stage: 'error', message: 'Failed to load video processor' }));
+      return false;
+    }
+  }, []);
 
   // Analyze playlist and identify renderable segments
   const analyzePlaylist = useCallback((items: PlaylistItem[]): PlaylistAnalysis => {
@@ -82,6 +124,115 @@ export function usePlaylistProcessor() {
     };
   }, []);
 
+  // Render image to video clip using canvas + FFmpeg
+  const renderImageToClip = useCallback(async (
+    ffmpeg: FFmpeg,
+    item: ImagePlaylistItem,
+    index: number,
+    settings: PlaylistSettings
+  ): Promise<string | null> => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    
+    const [resW, resH] = settings.resolution.split('x').map(n => parseInt(n));
+    canvas.width = resW;
+    canvas.height = resH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    try {
+      // Load image
+      let bmp: ImageBitmap;
+      if (item.file) {
+        bmp = await createImageBitmap(item.file);
+      } else {
+        const img = await loadImage(item.url);
+        bmp = await createImageBitmap(img);
+      }
+      
+      // Draw with padding
+      ctx.fillStyle = settings.padColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      const scale = Math.min(canvas.width / bmp.width, canvas.height / bmp.height);
+      const nw = Math.round(bmp.width * scale);
+      const nh = Math.round(bmp.height * scale);
+      const x = Math.round((canvas.width - nw) / 2);
+      const y = Math.round((canvas.height - nh) / 2);
+      ctx.drawImage(bmp, x, y, nw, nh);
+      bmp.close();
+      
+      // Get image data as PNG
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1];
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      
+      const inputName = `img_${index}.png`;
+      const outputName = `clip_img_${index}.mp4`;
+      
+      await ffmpeg.writeFile(inputName, bytes);
+      
+      // Create video from still image
+      await ffmpeg.exec([
+        '-loop', '1',
+        '-i', inputName,
+        '-c:v', 'libx264',
+        '-t', item.duration.toString(),
+        '-pix_fmt', 'yuv420p',
+        '-r', settings.fps.toString(),
+        '-vf', `scale=${resW}:${resH}`,
+        outputName
+      ]);
+      
+      await ffmpeg.deleteFile(inputName);
+      return outputName;
+    } catch (err) {
+      console.warn('Failed to render image:', item.name, err);
+      return null;
+    }
+  }, []);
+
+  // Process video clip (re-encode for consistency)
+  const processVideoClip = useCallback(async (
+    ffmpeg: FFmpeg,
+    item: VideoPlaylistItem,
+    index: number,
+    settings: PlaylistSettings
+  ): Promise<string | null> => {
+    const [resW, resH] = settings.resolution.split('x').map(n => parseInt(n));
+    
+    try {
+      const inputName = `vid_${index}_input.mp4`;
+      const outputName = `clip_vid_${index}.mp4`;
+      
+      await ffmpeg.writeFile(inputName, await fetchFile(item.file || item.url));
+      
+      // Re-encode for consistent format
+      await ffmpeg.exec([
+        '-i', inputName,
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '23',
+        '-r', settings.fps.toString(),
+        '-vf', `scale=${resW}:${resH}:force_original_aspect_ratio=decrease,pad=${resW}:${resH}:(ow-iw)/2:(oh-ih)/2:color=${settings.padColor.replace('#', '0x')}`,
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-pix_fmt', 'yuv420p',
+        outputName
+      ]);
+      
+      await ffmpeg.deleteFile(inputName);
+      return outputName;
+    } catch (err) {
+      console.warn('Failed to process video:', item.name, err);
+      return null;
+    }
+  }, []);
+
   // Render a single segment to video
   const renderSegment = useCallback(async (
     segment: RenderableSegment,
@@ -91,187 +242,81 @@ export function usePlaylistProcessor() {
   ): Promise<Blob | null> => {
     if (abortRef.current) return null;
     
-    const [resW, resH] = settings.resolution.split('x').map(n => parseInt(n));
-    const fps = Math.max(1, Math.min(60, Math.round(settings.fps)));
-    const padColor = settings.padColor || '#000000';
+    const ffmpeg = ffmpegRef.current;
+    if (!ffmpeg) return null;
     
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    
-    canvas.width = resW;
-    canvas.height = resH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    
-    // Prepare media items
-    const mediaItems: { 
-      type: 'image' | 'video'; 
-      element: ImageBitmap | HTMLVideoElement; 
-      duration: number;
-      name: string;
-    }[] = [];
-    
-    for (const item of segment.items) {
-      if (abortRef.current) return null;
-      
-      if (item.type === 'image') {
-        try {
-          let bmp: ImageBitmap;
-          if (item.file) {
-            bmp = await createImageBitmap(item.file);
-          } else {
-            const img = await loadImage(item.url);
-            bmp = await createImageBitmap(img);
-          }
-          mediaItems.push({ type: 'image', element: bmp, duration: item.duration, name: item.name });
-        } catch (err) {
-          console.warn('Failed to load image:', item.name, err);
-        }
-      } else if (item.type === 'video') {
-        try {
-          const video = await loadVideo(item.url);
-          mediaItems.push({ type: 'video', element: video, duration: item.duration, name: item.name });
-        } catch (err) {
-          console.warn('Failed to load video:', item.name, err);
-        }
-      }
-    }
-    
-    if (mediaItems.length === 0) return null;
-    
-    // Calculate total frames
-    let totalFrames = 0;
-    for (const item of mediaItems) {
-      totalFrames += Math.ceil(item.duration * fps);
-    }
+    const clipFiles: string[] = [];
     
     setProgress(p => ({
       ...p,
       stage: 'rendering',
       currentSegment: segmentIndex + 1,
       totalSegments,
-      currentFrame: 0,
-      totalFrames,
+      currentItem: 0,
+      totalItems: segment.items.length,
       message: `Rendering segment ${segmentIndex + 1}/${totalSegments}...`
     }));
     
-    // Setup MediaRecorder
-    const stream = canvas.captureStream(fps);
-    let mimeType = 'video/webm;codecs=vp9,opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = 'video/webm;codecs=vp8,opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
+    // Process each item in segment
+    for (let i = 0; i < segment.items.length; i++) {
+      if (abortRef.current) break;
+      
+      const item = segment.items[i];
+      
+      setProgress(p => ({
+        ...p,
+        currentItem: i + 1,
+        message: `Processing ${item.name}...`
+      }));
+      
+      let clipName: string | null = null;
+      
+      if (item.type === 'image') {
+        clipName = await renderImageToClip(ffmpeg, item as ImagePlaylistItem, i, settings);
+      } else if (item.type === 'video') {
+        clipName = await processVideoClip(ffmpeg, item as VideoPlaylistItem, i, settings);
+      }
+      
+      if (clipName) {
+        clipFiles.push(clipName);
       }
     }
     
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => {
-      if (e.data?.size) chunks.push(e.data);
-    };
+    if (clipFiles.length === 0 || abortRef.current) return null;
     
-    recorder.start();
+    // Concatenate all clips
+    setProgress(p => ({
+      ...p,
+      message: `Merging segment ${segmentIndex + 1}...`
+    }));
     
-    const frameInterval = 1000 / fps;
-    let currentItemIndex = 0;
-    let frameTimer = 0;
-    let drawnFrames = 0;
+    const listContent = clipFiles.map(f => `file '${f}'`).join('\n');
+    await ffmpeg.writeFile('concat_list.txt', listContent);
     
-    const drawFrame = (item: typeof mediaItems[0]) => {
-      ctx.fillStyle = padColor;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      let srcWidth: number, srcHeight: number;
-      
-      if (item.type === 'image') {
-        const bmp = item.element as ImageBitmap;
-        srcWidth = bmp.width;
-        srcHeight = bmp.height;
-        const scale = Math.min(canvas.width / srcWidth, canvas.height / srcHeight);
-        const nw = Math.round(srcWidth * scale);
-        const nh = Math.round(srcHeight * scale);
-        const x = Math.round((canvas.width - nw) / 2);
-        const y = Math.round((canvas.height - nh) / 2);
-        ctx.drawImage(bmp, x, y, nw, nh);
-      } else {
-        const video = item.element as HTMLVideoElement;
-        srcWidth = video.videoWidth;
-        srcHeight = video.videoHeight;
-        const scale = Math.min(canvas.width / srcWidth, canvas.height / srcHeight);
-        const nw = Math.round(srcWidth * scale);
-        const nh = Math.round(srcHeight * scale);
-        const x = Math.round((canvas.width - nw) / 2);
-        const y = Math.round((canvas.height - nh) / 2);
-        ctx.drawImage(video, x, y, nw, nh);
-      }
-    };
+    const outputName = `segment_${segmentIndex}.mp4`;
     
-    await new Promise<void>((resolve) => {
-      const renderLoop = setInterval(async () => {
-        if (abortRef.current) {
-          clearInterval(renderLoop);
-          resolve();
-          return;
-        }
-        
-        const currentItem = mediaItems[currentItemIndex];
-        if (!currentItem) {
-          clearInterval(renderLoop);
-          setTimeout(resolve, 200);
-          return;
-        }
-        
-        // Handle video playback
-        if (currentItem.type === 'video') {
-          const video = currentItem.element as HTMLVideoElement;
-          if (video.paused) {
-            video.currentTime = 0;
-            await video.play();
-          }
-        }
-        
-        drawFrame(currentItem);
-        drawnFrames++;
-        frameTimer += frameInterval;
-        
-        if (frameTimer + 1 >= currentItem.duration * 1000) {
-          // Pause video if moving to next item
-          if (currentItem.type === 'video') {
-            (currentItem.element as HTMLVideoElement).pause();
-          }
-          currentItemIndex++;
-          frameTimer = 0;
-        }
-        
-        setProgress(p => ({
-          ...p,
-          currentFrame: drawnFrames,
-          message: `Rendering segment ${segmentIndex + 1}/${totalSegments}: ${drawnFrames}/${totalFrames} frames`
-        }));
-        
-        if (currentItemIndex >= mediaItems.length) {
-          clearInterval(renderLoop);
-          setTimeout(resolve, 200);
-        }
-      }, frameInterval);
-    });
+    await ffmpeg.exec([
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', 'concat_list.txt',
+      '-c', 'copy',
+      outputName
+    ]);
     
-    recorder.stop();
-    
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-    });
+    // Read output
+    const data = await ffmpeg.readFile(outputName);
+    const uint8 = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const blob = new Blob([uint8], { type: 'video/mp4' });
     
     // Cleanup
-    for (const item of mediaItems) {
-      if (item.type === 'image') {
-        (item.element as ImageBitmap).close();
-      }
+    for (const file of clipFiles) {
+      try { await ffmpeg.deleteFile(file); } catch {}
     }
+    try { await ffmpeg.deleteFile('concat_list.txt'); } catch {}
+    try { await ffmpeg.deleteFile(outputName); } catch {}
     
-    return new Blob(chunks, { type: chunks[0]?.type || 'video/webm' });
-  }, []);
+    return blob;
+  }, [renderImageToClip, processVideoClip]);
 
   // Render all segments
   const renderPlaylist = useCallback(async (
@@ -281,13 +326,21 @@ export function usePlaylistProcessor() {
     abortRef.current = false;
     setIsProcessing(true);
     
+    // Load FFmpeg if needed
+    const loaded = await loadFFmpeg();
+    if (!loaded) {
+      setIsProcessing(false);
+      return [];
+    }
+    
     setProgress({
       stage: 'analyzing',
       currentSegment: 0,
       totalSegments: 0,
-      currentFrame: 0,
-      totalFrames: 0,
-      message: 'Analyzing playlist...'
+      currentItem: 0,
+      totalItems: 0,
+      message: 'Analyzing playlist...',
+      percent: 0
     });
     
     const analysis = analyzePlaylist(items);
@@ -304,8 +357,8 @@ export function usePlaylistProcessor() {
           segmentId: segment.id,
           blob,
           filename: analysis.canRenderSingleVideo 
-            ? 'playlist-output.webm' 
-            : `playlist-segment-${i + 1}.webm`,
+            ? 'playlist-output.mp4' 
+            : `playlist-segment-${i + 1}.mp4`,
           duration: segment.totalDuration
         });
       }
@@ -314,12 +367,13 @@ export function usePlaylistProcessor() {
     setProgress(p => ({
       ...p,
       stage: 'done',
-      message: `Rendered ${renderedSegments.length} segment(s)`
+      message: `Rendered ${renderedSegments.length} segment(s)`,
+      percent: 100
     }));
     
     setIsProcessing(false);
     return renderedSegments;
-  }, [analyzePlaylist, renderSegment]);
+  }, [loadFFmpeg, analyzePlaylist, renderSegment]);
 
   const abort = useCallback(() => {
     abortRef.current = true;
@@ -330,9 +384,10 @@ export function usePlaylistProcessor() {
       stage: 'idle',
       currentSegment: 0,
       totalSegments: 0,
-      currentFrame: 0,
-      totalFrames: 0,
-      message: ''
+      currentItem: 0,
+      totalItems: 0,
+      message: '',
+      percent: 0
     });
   }, []);
 
@@ -355,18 +410,5 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
-  });
-}
-
-function loadVideo(src: string): Promise<HTMLVideoElement> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.preload = 'auto';
-    video.onloadeddata = () => resolve(video);
-    video.onerror = reject;
-    video.src = src;
-    video.load();
   });
 }
