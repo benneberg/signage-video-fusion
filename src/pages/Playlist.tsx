@@ -183,6 +183,16 @@ export default function Playlist() {
     ));
   }, []);
   
+  const handleToggleRenderable = useCallback((id: string) => {
+    setItems(prev => prev.map(item => {
+      // Only allow toggling for image/video types
+      if (item.id === id && (item.type === 'image' || item.type === 'video')) {
+        return { ...item, renderable: !item.renderable } as typeof item;
+      }
+      return item;
+    }));
+  }, []);
+  
   const handleReorder = useCallback((reordered: PlaylistItem[]) => {
     setItems(reordered.map((item, idx) => ({ ...item, order: idx })));
   }, []);
@@ -520,6 +530,7 @@ export default function Playlist() {
                   index={index}
                   onRemove={handleRemoveItem}
                   onDurationChange={handleDurationChange}
+                  onToggleRenderable={handleToggleRenderable}
                 />
               </Reorder.Item>
             ))}
@@ -540,7 +551,7 @@ export default function Playlist() {
           {isProcessing ? (
             <>
               <SimpleProgress 
-                progress={progress.totalFrames > 0 ? Math.round((progress.currentFrame / progress.totalFrames) * 100) : 0}
+                progress={progress.percent || 0}
                 message={progress.message}
               />
               <Button variant="destructive" size="sm" onClick={abort}>
