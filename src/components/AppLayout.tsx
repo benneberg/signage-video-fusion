@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Film, Image, Sparkles, RefreshCw } from 'lucide-react';
+import { Film, Image, Sparkles, RefreshCw, ListVideo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -16,6 +16,7 @@ interface AppLayoutProps {
 const tabs = [
   { path: '/', label: 'Merge Videos', icon: Film },
   { path: '/image-to-video', label: 'Images to Video', icon: Image },
+  { path: '/playlist', label: 'Playlist', icon: ListVideo },
 ];
 
 export function AppLayout({ 
