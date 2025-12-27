@@ -1,73 +1,136 @@
-# Welcome to your Lovable project
+# Deterministic Playlist Compiler for Digital Signage
 
-## Project info
+A browser-based tool for compiling heterogeneous media playlists into gapless, deterministic video outputs. Built to simplify digital signage playback by treating playlists as renderable timelines rather than runtime orchestration problems.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## The Problem
 
-## How can I edit this code?
+Most digital signage systems treat playback as a runtime orchestration problem: a playlist of heterogeneous media items (images, videos, web pages, feeds) that must be sequenced, timed, and synchronized during playback. This introduces unnecessary complexity and failure modes—gaps, ordering issues, buffering delays, codec mismatches—especially for content that is static, scheduled, and repeatable.
 
-There are several ways of editing your application.
+Yet the majority of signage content is exactly that: **deterministic and predictable**.
 
-**Use Lovable**
+## The Solution
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+If most signage content is deterministic, it should be possible—and preferable—to treat a playlist as a renderable timeline and compile it into one or more gapless videos ahead of time. Runtime playback then becomes trivial, reliable, and platform-agnostic.
 
-Changes made via Lovable will be committed automatically to this repo.
+## Features
 
-**Use your preferred IDE**
+### 🎬 Video Merger
+- Merge multiple video files into a single output
+- Browser-based FFmpeg processing
+- Progress tracking and segment visualization
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 🖼️ Image to Video
+- Convert images with configurable durations into video
+- Customizable resolution, FPS, and padding
+- Multiple aspect ratio presets (16:9, 9:16, 4:3, 1:1)
+- Ken Burns effect support
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### 📋 Playlist Compiler
+- Create mixed-media playlists (images, videos, webpages, interactive content)
+- Drag-and-drop reordering
+- Automatic segmentation at non-renderable items
+- Mark items as non-renderable to control segment boundaries
+- JSON import/export for persistence and automation
+- Renders contiguous sections into gapless MP4 videos
 
-Follow these steps:
+## How It Works
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+The system behaves like a compiler:
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+1. **Input**: Heterogeneous media + intent (durations, order, settings)
+2. **Intermediate Representation**: Deterministic timeline with identified renderable segments
+3. **Output**: Optimized, gapless video artifacts
 
-# Step 3: Install the necessary dependencies.
-npm i
+When the entire playlist is renderable, the output is a single video. When non-renderable items exist (webpages, interactive content), the system produces multiple section videos that can be played sequentially around live content.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+## Key Insight
+
+This approach decisively outperforms classic playlist playback when content is:
+- ✅ Deterministic
+- ✅ Scheduled  
+- ✅ Repeatable
+
+It only defers to classic playlists when content must remain live, conditional, or interactive—cases that are real but represent a minority.
+
+**The exception should not define the rule.**
+
+## Tech Stack
+
+- **React** + **TypeScript** - UI framework
+- **Vite** - Build tool
+- **Tailwind CSS** - Styling
+- **shadcn/ui** - Component library
+- **FFmpeg.wasm** - Browser-based video processing
+- **Framer Motion** - Animations
+
+## Getting Started
+
+```bash
+# Clone the repository
+git clone <repository-url>
+
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Playlist Schema
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Playlists use a JSON schema for import/export:
 
-**Use GitHub Codespaces**
+```json
+{
+  "version": "1.0",
+  "name": "My Playlist",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "settings": {
+    "resolution": { "width": 1920, "height": 1080 },
+    "fps": 30,
+    "defaultImageDuration": 5,
+    "padding": "letterbox"
+  },
+  "items": [
+    {
+      "id": "unique-id",
+      "type": "image",
+      "name": "slide.jpg",
+      "duration": 5,
+      "isRenderable": true,
+      "order": 0
+    }
+  ]
+}
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Use Cases
 
-## What technologies are used for this project?
+- **Digital signage networks** - Pre-compile content for reliable playback
+- **Retail displays** - Scheduled promotional content
+- **Information kiosks** - Mixed static and interactive content
+- **Event displays** - Timed presentations with video breaks
 
-This project is built with:
+## License
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+MIT License
 
-## How can I deploy this project?
+Copyright (c) 2024
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-## Can I connect a custom domain to my Lovable project?
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
