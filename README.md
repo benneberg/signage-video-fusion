@@ -1,7 +1,7 @@
 # Deterministic Playlist Compiler for Digital Signage
 
 A system for compiling heterogeneous media playlists into **gapless, deterministic video outputs**.
-![Alt text](IMG_8843.png)
+![Alt text](IMG_8843.jpeg)
 👉 Live Demo  
 https://benneberg.github.io/signage-video-fusion/
 
