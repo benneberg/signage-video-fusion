@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Deterministic Playlist Compiler — Diagram</title>
+<style>
+body {
+  margin:0;
+  background:#0f1115;
+  color:#e5e7eb;
+  font-family:system-ui, sans-serif;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+.container {
+  width:1000px;
+}
+.title {
+  text-align:center;
+  margin-bottom:30px;
+}
+.title h1 { margin:0; font-size:28px; }
+.title p { color:#9ca3af; margin-top:6px; }
+
+.row {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin:30px 0;
+}
+
+.box {
+  background:#171a21;
+  border:1px solid #2a2f3a;
+  border-radius:10px;
+  padding:20px;
+  width:280px;
+  text-align:center;
+}
+
+.box h3 { margin-top:0; }
+
+.arrow {
+  font-size:28px;
+  color:#60a5fa;
+}
+
+.highlight {
+  color:#34d399;
+  font-weight:600;
+}
+
+.small {
+  color:#9ca3af;
+  font-size:13px;
+}
+
+.footer {
+  text-align:center;
+  margin-top:30px;
+  color:#9ca3af;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="title">
+<h1>Deterministic Playlist Compiler</h1>
+<p>From Runtime Orchestration → Precompiled Reliability</p>
+</div>
+
+<!-- PROBLEM -->
+<div class="row">
+  <div class="box">
+    <h3>Traditional Approach</h3>
+    <p class="small">Runtime Orchestration</p>
+    <ul style="text-align:left;">
+      <li>Mixed media playback</li>
+      <li>Real-time sequencing</li>
+      <li>Sync + buffering issues</li>
+    </ul>
+  </div>
+
+  <div class="arrow">→</div>
+
+  <div class="box">
+    <h3>Failure Modes</h3>
+    <ul style="text-align:left;">
+      <li>Gaps</li>
+      <li>Drift</li>
+      <li>Codec issues</li>
+      <li>Unreliable playback</li>
+    </ul>
+  </div>
+</div>
+
+<!-- SHIFT -->
+<div class="row">
+  <div class="box" style="width:100%;">
+    <h3 class="highlight">Core Insight</h3>
+    <p>
+      A playlist is not something to orchestrate.<br>
+      It is a <span class="highlight">timeline to compile</span>.
+    </p>
+  </div>
+</div>
+
+<!-- PIPELINE -->
+<div class="row">
+  <div class="box">
+    <h3>Input</h3>
+    <p class="small">Deterministic Media</p>
+    <ul style="text-align:left;">
+      <li>Images</li>
+      <li>Videos</li>
+      <li>Timing rules</li>
+    </ul>
+  </div>
+
+  <div class="arrow">→</div>
+
+  <div class="box">
+    <h3>Compile</h3>
+    <p class="small">Timeline → Segments</p>
+    <ul style="text-align:left;">
+      <li>Detect renderable blocks</li>
+      <li>Segment boundaries</li>
+      <li>FFmpeg processing</li>
+    </ul>
+  </div>
+
+  <div class="arrow">→</div>
+
+  <div class="box">
+    <h3>Output</h3>
+    <p class="small">Deterministic Artifacts</p>
+    <ul style="text-align:left;">
+      <li>Gapless videos</li>
+      <li>Predictable playback</li>
+      <li>Platform agnostic</li>
+    </ul>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div class="row">
+  <div class="box" style="width:100%;">
+    <h3 class="highlight">Result</h3>
+    <p>
+      Runtime complexity → <span class="highlight">Trivial playback</span><br>
+      Any player. No orchestration. No failure modes.
+    </p>
+  </div>
+</div>
+
+<div class="footer">
+Best for deterministic, scheduled, repeatable content
+</div>
+
+</div>
+
+</body>
+</html>
